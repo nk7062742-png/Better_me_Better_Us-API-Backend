@@ -1,0 +1,17 @@
+# Default ignored files
+/shelf/
+/workspace.xml
+
+.env 
+.venv/
+
+# IDE artifacts
+.idea/
+
+# Python cache artifacts
+__pycache__/
+<<<<<<< HEAD
+*.pyc
+=======
+*.pyc
+>>>>>>> fa41625 (index on (no branch): c0e6350 Update README with production safety settings)

@@ -1,0 +1,11 @@
+fastapi
+uvicorn
+openai
+python-dotenv
+qdrant-client
+pypdf
+python-docx
+python-multipart
+tiktoken
+tenacity
+python-jose[cryptography]
