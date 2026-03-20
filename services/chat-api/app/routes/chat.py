@@ -19,6 +19,8 @@ class ChatRequest(BaseModel):
     relationship_id: Optional[str] = None
     partner1: Optional[str] = None
     partner2: Optional[str] = None
+    partner1_name: Optional[str] = None
+    partner2_name: Optional[str] = None
 
 
 @router.post("/chat")
@@ -39,6 +41,8 @@ def chat(
             source=payload.source,  # pass source
             partner1=payload.partner1,
             partner2=payload.partner2,
+            partner1_name=payload.partner1_name,
+            partner2_name=payload.partner2_name,
         )
 
         return {
