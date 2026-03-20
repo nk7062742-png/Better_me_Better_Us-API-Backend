@@ -9,3 +9,4 @@ python-multipart
 tiktoken
 tenacity
 python-jose[cryptography]
+google-auth
