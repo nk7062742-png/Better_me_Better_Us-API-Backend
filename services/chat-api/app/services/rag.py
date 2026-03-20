@@ -136,14 +136,18 @@ def run_rag(
     source: Optional[str] = None,
     partner1: Optional[str] = None,
     partner2: Optional[str] = None,
+    partner1_name: Optional[str] = None,
+    partner2_name: Optional[str] = None,
 ) -> Dict[str, object]:
     text = (user_input or query or "").strip()
-    # Append partner perspectives only for medication flows
-    if mode == "relationship_medication" and (partner1 or partner2):
+    # Append partner perspectives only for mediation flows
+    if mode == "relationship_mediation" and (partner1 or partner2):
+        p1_label = (partner1_name or "").strip() or "Partner 1"
+        p2_label = (partner2_name or "").strip() or "Partner 2"
         if partner1:
-            text += f"\nPartner 1: {partner1}"
+            text += f"\n{p1_label}: {partner1}"
         if partner2:
-            text += f"\nPartner 2: {partner2}"
+            text += f"\n{p2_label}: {partner2}"
     if not text:
         raise ValueError("Message required")
 
@@ -151,7 +155,7 @@ def run_rag(
         raise ValueError(f"Invalid mode: {mode}")
     if not user_id:
         raise ValueError("user_id is required")
-    if mode == "relationship_medication" and not relationship_id:
+    if mode == "relationship_mediation" and not relationship_id:
         raise ValueError("relationship_id is required for mediation mode")
     existing_owner = SESSION_OWNERS.get(session_id)
     if existing_owner and existing_owner != user_id:
@@ -255,5 +259,3 @@ def run_rag(
         "relationship_id": relationship_id,
         "history": SESSION_HISTORY[session_id],
     }
-
-
