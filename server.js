@@ -14,19 +14,28 @@ const app = express();
 app.use(cors());
 app.use(express.json());
 
-app.get("/", (_req, res) => {
-  res.status(200).json({
-    success: true,
-    service: "image-analyze-api",
-    message: "API is running",
-  });
-});
-
 /* =====================================
    🔥 FIREBASE ADMIN INIT
 ===================================== */
+const serviceAccountConfig = (() => {
+  if (process.env.FIREBASE_SERVICE_ACCOUNT) {
+    try {
+      const parsed = JSON.parse(process.env.FIREBASE_SERVICE_ACCOUNT);
+      if (parsed.private_key) {
+        parsed.private_key = parsed.private_key.replace(/\\n/g, "\n");
+      }
+      return parsed;
+    } catch (err) {
+      console.error("Invalid FIREBASE_SERVICE_ACCOUNT JSON:", err.message);
+    }
+  }
+  return serviceAccount;
+})();
+
 admin.initializeApp({
-  credential: admin.credential.cert(serviceAccount),
+  credential: admin.credential.cert(serviceAccountConfig),
+  projectId:
+    process.env.FIREBASE_PROJECT_ID || serviceAccountConfig.project_id,
 });
 
 const db = admin.firestore();
@@ -50,7 +59,8 @@ app.post("/api/save-token", async (req, res) => {
 
     res.json({ success: true });
   } catch (err) {
-    res.status(500).json({ error: err.message });
+    console.error("send notification failed:", err?.code, err?.message);
+    res.status(500).json({ error: err?.message || "Unknown error" });
   }
 });
 
