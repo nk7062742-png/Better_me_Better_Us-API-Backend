@@ -5,7 +5,22 @@ import express from "express";
 import cors from "cors";
 import admin from "firebase-admin";
 import { v4 as uuidv4 } from "uuid";
-import serviceAccount from "./serviceAccountKey.json" with { type: "json" };
+let serviceAccount;
+if (process.env.FIREBASE_SERVICE_ACCOUNT) {
+  serviceAccount = JSON.parse(process.env.FIREBASE_SERVICE_ACCOUNT);
+} else {
+  try {
+    const module = await import("./serviceAccountKey.json", {
+      assert: { type: "json" },
+    });
+    serviceAccount = module.default;
+  } catch (e) {
+    console.error(
+      "Missing Firebase service account. Set FIREBASE_SERVICE_ACCOUNT env.",
+    );
+    throw e;
+  }
+}
 
 import imageRoutes from "./routes/imageAnalyze.js";
 
