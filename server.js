@@ -5,21 +5,35 @@ import express from "express";
 import cors from "cors";
 import admin from "firebase-admin";
 import { v4 as uuidv4 } from "uuid";
-let serviceAccount;
-if (process.env.FIREBASE_SERVICE_ACCOUNT) {
-  serviceAccount = JSON.parse(process.env.FIREBASE_SERVICE_ACCOUNT);
-} else {
-  try {
-    const module = await import("./serviceAccountKey.json", {
-      assert: { type: "json" },
-    });
-    serviceAccount = module.default;
-  } catch (e) {
-    console.error(
-      "Missing Firebase service account. Set FIREBASE_SERVICE_ACCOUNT env.",
-    );
-    throw e;
+import fs from "fs";
+import path from "path";
+
+// Prefer service account from env (base64 JSON). Fallback to local file for dev.
+function getServiceAccount() {
+  const b64 = process.env.SERVICE_ACCOUNT_B64;
+  if (b64) {
+    try {
+      const json = Buffer.from(b64, "base64").toString("utf8");
+      return JSON.parse(json);
+    } catch (e) {
+      console.error("Failed to parse SERVICE_ACCOUNT_B64:", e.message);
+    }
   }
+
+  const credPath = process.env.GOOGLE_APPLICATION_CREDENTIALS;
+  if (credPath && fs.existsSync(credPath)) {
+    try {
+      return JSON.parse(fs.readFileSync(credPath, "utf8"));
+    } catch (e) {
+      console.error("Failed to read GOOGLE_APPLICATION_CREDENTIALS:", e.message);
+    }
+  }
+
+  const localPath = path.join(process.cwd(), "serviceAccountKey.json");
+  if (fs.existsSync(localPath)) {
+    return JSON.parse(fs.readFileSync(localPath, "utf8"));
+  }
+  throw new Error("No service account credentials provided");
 }
 
 import imageRoutes from "./routes/imageAnalyze.js";
@@ -32,6 +46,7 @@ app.use(express.json());
 /* =====================================
    🔥 FIREBASE ADMIN INIT
 ===================================== */
+const serviceAccount = getServiceAccount();
 admin.initializeApp({
   credential: admin.credential.cert(serviceAccount),
 });
@@ -48,8 +63,14 @@ app.use("/api", imageRoutes);
 ===================================== */
 app.post("/api/save-token", async (req, res) => {
   try {
-    const { userId, fcmToken } = req.body;
+    const { userId } = req.body;
+    const fcmToken = req.body.fcmToken || req.body.token;
 
+    if (!userId || !fcmToken) {
+      return res.status(400).json({ error: "userId and fcmToken are required" });
+    }
+
+    console.log("[save-token] user=", userId, "tokenLen=", fcmToken.length);
     await db.collection("users").doc(userId).set(
       { fcmToken },
       { merge: true }
@@ -57,6 +78,7 @@ app.post("/api/save-token", async (req, res) => {
 
     res.json({ success: true });
   } catch (err) {
+    console.error("[save-token] error:", err);
     res.status(500).json({ error: err.message });
   }
 });
