@@ -17,25 +17,8 @@ app.use(express.json());
 /* =====================================
    🔥 FIREBASE ADMIN INIT
 ===================================== */
-const serviceAccountConfig = (() => {
-  if (process.env.FIREBASE_SERVICE_ACCOUNT) {
-    try {
-      const parsed = JSON.parse(process.env.FIREBASE_SERVICE_ACCOUNT);
-      if (parsed.private_key) {
-        parsed.private_key = parsed.private_key.replace(/\\n/g, "\n");
-      }
-      return parsed;
-    } catch (err) {
-      console.error("Invalid FIREBASE_SERVICE_ACCOUNT JSON:", err.message);
-    }
-  }
-  return serviceAccount;
-})();
-
 admin.initializeApp({
-  credential: admin.credential.cert(serviceAccountConfig),
-  projectId:
-    process.env.FIREBASE_PROJECT_ID || serviceAccountConfig.project_id,
+  credential: admin.credential.cert(serviceAccount),
 });
 
 const db = admin.firestore();
@@ -59,8 +42,7 @@ app.post("/api/save-token", async (req, res) => {
 
     res.json({ success: true });
   } catch (err) {
-    console.error("send notification failed:", err?.code, err?.message);
-    res.status(500).json({ error: err?.message || "Unknown error" });
+    res.status(500).json({ error: err.message });
   }
 });
 
