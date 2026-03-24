@@ -12,11 +12,9 @@ MODE_LOOKUP = {
     "private": "relationship_private",
     "betterus": "relationship_private",
     "better_us": "relationship_private",
-    "mediation": "relationship_medication",
-    "relationshipmediation": "relationship_medication",
-    "relationship_mediation": "relationship_medication",
-    "relationshipmedication": "relationship_medication",
-    "relationship_medication": "relationship_medication",
+    "mediation": "relationship_mediation",
+    "relationshipmediation": "relationship_mediation",
+    "relationship_mediation": "relationship_mediation",
 }
 
 
