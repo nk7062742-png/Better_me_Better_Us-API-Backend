@@ -1,7 +1,27 @@
-from fastapi import APIRouter, Depends
+import os
+from fastapi import APIRouter, Depends, Header, HTTPException, status
 from typing import Optional
 
-from app.core.auth import require_admin_key
+try:
+    from app.core.auth import require_admin_key
+except ImportError:
+    # Backward-compatible fallback if deployed auth module doesn't expose require_admin_key yet.
+    def require_admin_key(
+        x_admin_key: str | None = Header(default=None, alias="x-admin-key"),
+    ) -> bool:
+        expected = os.getenv("ADMIN_API_KEY")
+        if not expected:
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail="Admin auth is not configured",
+            )
+        if x_admin_key != expected:
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="Invalid admin key",
+            )
+        return True
+
 from app.core.rate_limit import enforce_rate_limit
 from app.core.qdrant_db import KB_COLLECTIONS, MEMORY_COLLECTIONS, client
 from app.core.telemetry import error_logs, metrics, moderation_logs
