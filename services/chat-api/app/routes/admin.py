@@ -1,6 +1,7 @@
 from fastapi import APIRouter, Depends
 from typing import Optional
 
+from app.core.auth import require_admin_key
 from app.core.rate_limit import enforce_rate_limit
 from app.core.qdrant_db import KB_COLLECTIONS, MEMORY_COLLECTIONS, client
 from app.core.telemetry import error_logs, metrics, moderation_logs
@@ -14,7 +15,7 @@ def _collection_size(collection_name: str) -> Optional[int]:
 
 
 @router.get("/status")
-def status(_rl=Depends(enforce_rate_limit)):
+def status(_admin=Depends(require_admin_key), _rl=Depends(enforce_rate_limit)):
     kb_sizes = {mode: _collection_size(name) for mode, name in KB_COLLECTIONS.items()}
     memory_sizes = {mode: _collection_size(name) for mode, name in MEMORY_COLLECTIONS.items()}
     return {
@@ -27,7 +28,7 @@ def status(_rl=Depends(enforce_rate_limit)):
 
 
 @router.get("/metrics")
-def metrics_endpoint(_rl=Depends(enforce_rate_limit)):
+def metrics_endpoint(_admin=Depends(require_admin_key), _rl=Depends(enforce_rate_limit)):
     """Basic metrics endpoint for cost governance & observability."""
     return {
         "metrics": metrics,
