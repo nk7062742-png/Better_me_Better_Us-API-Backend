@@ -138,8 +138,8 @@ def run_rag(
     partner2: Optional[str] = None,
 ) -> Dict[str, object]:
     text = (user_input or query or "").strip()
-    # Append partner perspectives only for medication flows
-    if mode == "relationship_medication" and (partner1 or partner2):
+    # Append partner perspectives for mediation flows.
+    if mode == "relationship_mediation" and (partner1 or partner2):
         if partner1:
             text += f"\nPartner 1: {partner1}"
         if partner2:
@@ -151,7 +151,7 @@ def run_rag(
         raise ValueError(f"Invalid mode: {mode}")
     if not user_id:
         raise ValueError("user_id is required")
-    if mode == "relationship_medication" and not relationship_id:
+    if mode == "relationship_mediation" and not relationship_id:
         raise ValueError("relationship_id is required for mediation mode")
     existing_owner = SESSION_OWNERS.get(session_id)
     if existing_owner and existing_owner != user_id:
@@ -219,7 +219,15 @@ def run_rag(
 
     # Build LLM messages and ask model
     history = SESSION_HISTORY.get(session_id, [])
-    messages = build_messages(mode, text, history, context, memory_snippets)
+    messages = build_messages(
+        mode,
+        text,
+        history,
+        context,
+        memory_snippets,
+        partner1=partner1,
+        partner2=partner2,
+    )
     reply = ask_llm(messages, user_id=user_id)
 
     # Guardrail: if model claims no context while we have some, fall back to extractive bullets.
@@ -255,5 +263,4 @@ def run_rag(
         "relationship_id": relationship_id,
         "history": SESSION_HISTORY[session_id],
     }
-
 
