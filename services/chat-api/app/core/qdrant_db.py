@@ -20,14 +20,14 @@ client = QdrantClient(url=QDRANT_URL, api_key=QDRANT_API_KEY)
 
 KB_COLLECTIONS: Dict[str, str] = {
     "relationship_private": "relationship_private_vectors",
-    "relationship_medication": "relationship_medication_vectors",
+    "relationship_mediation": "relationship_mediation_vectors",
     "coaching": "coaching_vectors",
     "personal_growth": "personal_growth_vectors",
 }
 
 MEMORY_COLLECTIONS: Dict[str, str] = {
     "relationship_private": "relationship_private_memory",
-    "relationship_medication": "relationship_medication_memory",
+    "relationship_mediation": "relationship_mediation_memory",
     "coaching": "coaching_memory",
     "personal_growth": "personal_growth_memory",
 }
