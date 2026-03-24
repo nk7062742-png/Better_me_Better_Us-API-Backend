@@ -1,4 +1,5 @@
 import uuid
+import inspect
 from typing import Dict, List, Optional
 
 from qdrant_client.models import PointStruct, Filter, FieldCondition, MatchValue
@@ -219,15 +220,39 @@ def run_rag(
 
     # Build LLM messages and ask model
     history = SESSION_HISTORY.get(session_id, [])
-    messages = build_messages(
-        mode,
-        text,
-        history,
-        context,
-        memory_snippets,
-        partner1=partner1,
-        partner2=partner2,
-    )
+    build_messages_kwargs = {}
+    try:
+        params = inspect.signature(build_messages).parameters
+        if "partner1" in params:
+            build_messages_kwargs["partner1"] = partner1
+        if "partner2" in params:
+            build_messages_kwargs["partner2"] = partner2
+    except Exception:
+        # Fall back to base call if signature introspection fails unexpectedly.
+        build_messages_kwargs = {}
+
+    try:
+        messages = build_messages(
+            mode,
+            text,
+            history,
+            context,
+            memory_snippets,
+            **build_messages_kwargs,
+        )
+    except TypeError as exc:
+        # Compatibility fallback for deployments still using an older
+        # build_messages signature without partner arguments.
+        if "unexpected keyword argument" in str(exc):
+            messages = build_messages(
+                mode,
+                text,
+                history,
+                context,
+                memory_snippets,
+            )
+        else:
+            raise
     reply = ask_llm(messages, user_id=user_id)
 
     # Guardrail: if model claims no context while we have some, fall back to extractive bullets.
@@ -263,4 +288,3 @@ def run_rag(
         "relationship_id": relationship_id,
         "history": SESSION_HISTORY[session_id],
     }
-
