@@ -1,9 +1,5 @@
 from typing import List, Dict
 
-# ============================================================
-# GLOBAL GUARDRAILS
-# ============================================================
-
 GLOBAL_GUARDRAILS = """
 Emotional safety is the highest priority.
 
@@ -168,7 +164,7 @@ Limit 160-180 words.
     return system_prompt, user_prompt
 
 
-def mediation_prompt(
+def relationship_mediation_prompt(
     context: str,
     issue_title: str,
     partner1_perspective: str | None = None,
@@ -220,41 +216,6 @@ Limit 200-220 words.
 """
     return system_prompt, user_prompt
 
-
-def relationship_medication_prompt(context: str, user_input: str) -> tuple[str, str]:
-    # For medication/health topics, reuse mediation-style safety but without partner fields.
-    system_prompt = f"""
-{GLOBAL_GUARDRAILS}
-
-You are a careful relationship guide when medication or health is involved.
-
-RULES:
-- Be supportive; avoid medical advice or diagnosis.
-- Encourage consulting qualified health professionals for medication decisions.
-- Stay neutral; focus on communication, safety, and understanding.
-- Do not recommend separation; de-escalate tension.
-"""
-
-    user_prompt = f"""
-Context:
-{context}
-
-User:
-{user_input}
-
-Provide:
-- Calm, empathetic perspective
-- Validation of feelings
-- Common ground or shared goals
-- 2-3 low-stakes next steps (e.g., questions to ask a doctor together, how to discuss meds calmly)
-
-Be warm, empathetic, and concise.
-Limit ~200-220 words.
-"""
-    return system_prompt, user_prompt
-
-
-# Helper to trim and format snippets
 def _render_snippets(snippets: List[str], max_chars: int = 1600) -> str:
     if not snippets:
         return "none"
@@ -271,10 +232,12 @@ PROMPT_BUILDERS = {
     "personal_growth": personal_growth_prompt,
     "coaching": coaching_prompt,
     "relationship_private": relationship_private_prompt,
-    "relationship_medication": relationship_medication_prompt,
-    # If a dedicated mediation mode is ever exposed, map it here:
-    "relationship_mediation": lambda context, user_input: mediation_prompt(
-        context=context, issue_title=user_input
+
+    "relationship_mediation": lambda context, user_input, partner1=None, partner2=None: relationship_mediation_prompt(
+        context=context,
+        issue_title=user_input,
+        partner1_perspective=partner1,
+        partner2_perspective=partner2,
     ),
 }
 
@@ -285,11 +248,13 @@ def build_messages(
     history: List[Dict[str, str]],
     context_snippets: List[str],
     memory_snippets: List[str],
+    partner1: str | None = None,
+    partner2: str | None = None,
 ) -> List[Dict[str, str]]:
     if mode not in PROMPT_BUILDERS:
         raise ValueError(f"Invalid mode: {mode}")
 
-    trimmed_history = history[-8:]  # cap history for window control
+    trimmed_history = history[-8:]  
 
     context_block = f"Retrieved knowledge:\n- {_render_snippets(context_snippets)}"
     memory_block = f"Long-term memory:\n- {_render_snippets(memory_snippets)}"
@@ -297,8 +262,9 @@ def build_messages(
     system_prompt, user_prompt = PROMPT_BUILDERS[mode](
         context=f"{context_block}\n{memory_block}",
         user_input=user_input,
+        partner1=partner1,
+        partner2=partner2,
     )
-
     messages: List[Dict[str, str]] = [
         {"role": "system", "content": system_prompt},
         *trimmed_history,
