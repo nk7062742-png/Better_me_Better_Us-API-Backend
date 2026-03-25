@@ -258,12 +258,17 @@ def build_messages(
 
     context_block = f"Retrieved knowledge:\n- {_render_snippets(context_snippets)}"
     memory_block = f"Long-term memory:\n- {_render_snippets(memory_snippets)}"
-
+   if mode == "relationship_mediation":
     system_prompt, user_prompt = PROMPT_BUILDERS[mode](
         context=f"{context_block}\n{memory_block}",
         user_input=user_input,
         partner1=partner1,
         partner2=partner2,
+    )
+else:
+    system_prompt, user_prompt = PROMPT_BUILDERS[mode](
+        context=f"{context_block}\n{memory_block}",
+        user_input=user_input,
     )
     messages: List[Dict[str, str]] = [
         {"role": "system", "content": system_prompt},
