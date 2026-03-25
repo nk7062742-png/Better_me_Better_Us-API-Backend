@@ -17,10 +17,6 @@ SESSION_HISTORY: Dict[str, List[Dict[str, str]]] = {}
 SESSION_OWNERS: Dict[str, str] = {}
 
 
-# -------------------------------------------------------
-# Helpers
-# -------------------------------------------------------
-
 _MEMORY_BLOCKLIST = {
     "do not have access",
     "don't have access",
@@ -121,11 +117,6 @@ def _is_recent_upload_request(text: str) -> bool:
         or "the file" in lower
     )
 
-
-# -------------------------------------------------------
-# Main
-# -------------------------------------------------------
-
 def run_rag(
     *,
     mode: str,
@@ -139,12 +130,14 @@ def run_rag(
     partner2: Optional[str] = None,
 ) -> Dict[str, object]:
     text = (user_input or query or "").strip()
-    # Append partner perspectives for mediation flows.
-    if mode == "relationship_mediation" and (partner1 or partner2):
-        if partner1:
-            text += f"\nPartner 1: {partner1}"
-        if partner2:
-            text += f"\nPartner 2: {partner2}"
+    # if mode == "relationship_mediation" and (partner1 or partner2):
+    #     if partner1:
+    #         text += f"\nPartner 1: {partner1}"
+    #     if partner2:
+    #         text += f"\nPartner 2: {partner2}"
+
+
+    
     if not text:
         raise ValueError("Message required")
 
@@ -163,7 +156,6 @@ def run_rag(
     if not safe:
         return {"reply": msg, "context": [], "memory": []}
 
-    # Decide whether to pull document context
     doc_like = source is not None or _is_recent_upload_request(text) or any(
         kw in text.lower() for kw in ["pdf", "document", "file", "upload"]
     )
@@ -183,7 +175,6 @@ def run_rag(
 
         context = _trim(_search(KB_COLLECTIONS[mode], embedding, limit=8, flt=flt))
 
-        # Recent filename bias (if user said "uploaded")
         recent_filename = LAST_INGESTED_FILENAME.get((mode, user_id))
         if _is_recent_upload_request(text) and recent_filename:
             must_filters = [
@@ -199,7 +190,6 @@ def run_rag(
             if recent_snippets:
                 context = recent_snippets
 
-    # Long-term memory (only if we computed embedding; otherwise skip to avoid extra work for small talk)
     memory_snippets: List[str] = []
     if embedding is None:
         embedding = get_embedding(text)
@@ -217,45 +207,18 @@ def run_rag(
 
     memory_raw = _search(MEMORY_COLLECTIONS[mode], embedding, limit=4, flt=memory_filter)
     memory_snippets = _trim(_filter_memory(memory_raw), max_chars=400)
-
-    # Build LLM messages and ask model
     history = SESSION_HISTORY.get(session_id, [])
-    build_messages_kwargs = {}
-    try:
-        params = inspect.signature(build_messages).parameters
-        if "partner1" in params:
-            build_messages_kwargs["partner1"] = partner1
-        if "partner2" in params:
-            build_messages_kwargs["partner2"] = partner2
-    except Exception:
-        # Fall back to base call if signature introspection fails unexpectedly.
-        build_messages_kwargs = {}
-
-    try:
-        messages = build_messages(
-            mode,
-            text,
-            history,
-            context,
-            memory_snippets,
-            **build_messages_kwargs,
-        )
-    except TypeError as exc:
-        # Compatibility fallback for deployments still using an older
-        # build_messages signature without partner arguments.
-        if "unexpected keyword argument" in str(exc):
-            messages = build_messages(
-                mode,
-                text,
-                history,
-                context,
-                memory_snippets,
-            )
-        else:
-            raise
+    messages = build_messages(
+    mode,
+    text,
+    history,
+    context,
+    memory_snippets,
+    partner1=partner1,
+    partner2=partner2,
+)
     reply = ask_llm(messages, user_id=user_id)
 
-    # Guardrail: if model claims no context while we have some, fall back to extractive bullets.
     denial_markers = [
         "no content",
         "no context",
@@ -272,12 +235,10 @@ def run_rag(
         bullets = _bullets_from_context(context, n=3)
         reply = "Here are key points from your document:\n- " + "\n- ".join(bullets)
 
-    # Update session history
     history.append({"role": "user", "content": text})
     history.append({"role": "assistant", "content": reply})
     SESSION_HISTORY[session_id] = history[-12:]
 
-    # Save to long-term memory
     _save_memory(mode, user_id, session_id, relationship_id, text, reply)
     inc("chat_requests", 1)
 
