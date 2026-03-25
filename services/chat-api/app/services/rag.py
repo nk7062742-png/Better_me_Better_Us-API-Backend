@@ -130,15 +130,7 @@ def run_rag(
     partner2: Optional[str] = None,
 ) -> Dict[str, object]:
     text = (user_input or query or "").strip()
-    # if mode == "relationship_mediation" and (partner1 or partner2):
-    #     if partner1:
-    #         text += f"\nPartner 1: {partner1}"
-    #     if partner2:
-    #         text += f"\nPartner 2: {partner2}"
-
-
-    
-    if not text:
+   if not text:
         raise ValueError("Message required")
 
     if mode not in KB_COLLECTIONS:
