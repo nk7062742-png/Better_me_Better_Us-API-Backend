@@ -130,7 +130,7 @@ def run_rag(
     partner2: Optional[str] = None,
 ) -> Dict[str, object]:
     text = (user_input or query or "").strip()
-   if not text:
+    if not text:
         raise ValueError("Message required")
 
     if mode not in KB_COLLECTIONS:
