@@ -1,6 +1,6 @@
 import os
 from pathlib import Path
-from typing import Tuple
+from typing import Any, Mapping, Tuple
 
 from dotenv import load_dotenv
 from openai import OpenAI
@@ -25,7 +25,40 @@ VIOLENCE_TERMS = {
     "stab",
     "shoot",
     "abuse",
+    "hit my",
+    "hurt them",
+    "beat",
 }
+
+
+def _category_on(categories: Any, key: str) -> bool:
+    if isinstance(categories, Mapping):
+        return bool(categories.get(key))
+    attr = key.replace("-", "_").replace("/", "_")
+    return bool(getattr(categories, attr, False))
+
+
+def _unsafe_message(categories: Any) -> str:
+    self_harm_keys = (
+        "self-harm",
+        "self-harm/intent",
+        "self-harm/instructions",
+    )
+    violence_abuse_keys = (
+        "violence",
+        "violence/graphic",
+        "harassment/threatening",
+    )
+
+    if any(_category_on(categories, key) for key in self_harm_keys):
+        return (
+            "I’m really glad you reached out. I can’t assist with self-harm. "
+            "If you may act on these thoughts, call emergency services now. "
+            "In the U.S. or Canada, call/text 988 for immediate support."
+        )
+    if any(_category_on(categories, key) for key in violence_abuse_keys):
+        return "I can’t help with violence or abuse. I can help with safety planning and de-escalation resources."
+    return "I can’t respond to that request."
 
 
 def _moderate_openai(text: str) -> Tuple[bool, str, dict]:
@@ -44,10 +77,14 @@ def _moderate_openai(text: str) -> Tuple[bool, str, dict]:
 
     base_url = base_url or OPENAI_DEFAULT_BASE_URL
     client = OpenAI(api_key=api_key, base_url=base_url)
-    result = client.moderations.create(model="omni-moderation-latest", input=text)
-    flagged = result.results[0].flagged
-    categories = result.results[0].categories
-    category_scores = result.results[0].category_scores
+    try:
+        result = client.moderations.create(model="omni-moderation-latest", input=text)
+        flagged = result.results[0].flagged
+        categories = result.results[0].categories
+        category_scores = result.results[0].category_scores
+    except Exception:
+        # Fail-safe: if moderation call fails, block conservatively.
+        return False, "Service unavailable: moderation check failed.", {}
 
     raw = {
         "flagged": flagged,
@@ -57,24 +94,13 @@ def _moderate_openai(text: str) -> Tuple[bool, str, dict]:
     if not flagged:
         return True, "", raw
 
-    if categories.get("self-harm", False):
-        msg = (
-            "I’m really glad you reached out. I can’t assist with self-harm. "
-            "If you may act on these thoughts, call emergency services now. "
-            "In the U.S. or Canada, call/text 988 for immediate support."
-        )
-    elif categories.get("violence", False):
-        msg = "I can’t help with violence. I can help with safety planning and de-escalation resources."
-    else:
-        msg = "I can’t respond to that request."
-
-    return False, msg, raw
+    return False, _unsafe_message(categories), raw
 
 
 def evaluate_input(user_text: str) -> Tuple[bool, str]:
     safe, msg, raw = _moderate_openai(user_text)
     if raw:
-        log_moderation({"input_preview": user_text[:120], **raw})
+        log_moderation({"channel": "input", "input_preview": user_text[:120], **raw})
     if not safe:
         return safe, msg
 
@@ -91,5 +117,24 @@ def evaluate_input(user_text: str) -> Tuple[bool, str]:
         return (
             False,
             "I cannot help with violence or abuse. I can help with de-escalation, safety planning, and legal-support resources.",
+        )
+    return True, ""
+
+
+def evaluate_output(output_text: str) -> Tuple[bool, str]:
+    safe, _msg, raw = _moderate_openai(output_text)
+    if raw:
+        log_moderation({"channel": "output", "output_preview": output_text[:120], **raw})
+    if not safe:
+        return (
+            False,
+            "I can’t provide that. I can still help with safe, supportive next steps.",
+        )
+
+    text = output_text.lower()
+    if any(term in text for term in SELF_HARM_TERMS) or any(term in text for term in VIOLENCE_TERMS):
+        return (
+            False,
+            "I can’t provide that. I can still help with safe, supportive next steps.",
         )
     return True, ""
