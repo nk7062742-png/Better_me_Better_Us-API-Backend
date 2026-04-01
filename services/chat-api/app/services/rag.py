@@ -1,5 +1,6 @@
 import uuid
 import inspect
+from datetime import datetime, timezone
 from typing import Dict, List, Optional
 
 from qdrant_client.models import PointStruct, Filter, FieldCondition, MatchValue
@@ -8,7 +9,7 @@ from app.core.qdrant_db import KB_COLLECTIONS, MEMORY_COLLECTIONS, client
 from app.core.embeddings import get_embedding
 from app.core.llm import ask_llm
 from app.core.prompts import build_messages
-from app.core.safety import evaluate_input
+from app.core.safety import evaluate_input, evaluate_output
 from app.core.telemetry import inc, log_error
 from app.services.ingestion import LAST_INGESTED_FILENAME
 
@@ -52,6 +53,67 @@ def _filter_memory(snippets: List[str]) -> List[str]:
     return cleaned
 
 
+def _dedupe_preserve_order(snippets: List[str]) -> List[str]:
+    seen = set()
+    output: List[str] = []
+    for snippet in snippets:
+        key = snippet.strip()
+        if not key or key in seen:
+            continue
+        seen.add(key)
+        output.append(snippet)
+    return output
+
+
+def _infer_emotion_tone(user_input: str) -> str:
+    text = user_input.lower()
+    if any(k in text for k in ("angry", "furious", "upset", "frustrated")):
+        return "high_intensity"
+    if any(k in text for k in ("sad", "hurt", "lonely", "overwhelmed", "anxious")):
+        return "distressed"
+    if any(k in text for k in ("confused", "unclear", "stuck")):
+        return "uncertain"
+    if any(k in text for k in ("grateful", "happy", "calm", "better")):
+        return "positive"
+    return "neutral"
+
+
+def _compact(text: str, max_len: int = 220) -> str:
+    value = " ".join((text or "").split())
+    if len(value) <= max_len:
+        return value
+    return value[: max_len - 3].rstrip() + "..."
+
+
+def _build_memory_record(mode: str, user_input: str, reply: str) -> Dict[str, str]:
+    emotion_tone = _infer_emotion_tone(user_input)
+    user_focus = _compact(user_input, max_len=280)
+    assistant_focus = _compact(reply, max_len=280)
+    summary = _compact(
+        f"In {mode}, user discussed: {user_focus}. Assistant guidance: {assistant_focus}.",
+        max_len=420,
+    )
+    return {
+        "schema": "memory_v1",
+        "mode": mode,
+        "summary": summary,
+        "user_focus": user_focus,
+        "assistant_focus": assistant_focus,
+        "emotion_tone": emotion_tone,
+    }
+
+
+def _record_to_embedding_text(record: Dict[str, str]) -> str:
+    return " | ".join(
+        [
+            f"summary: {record.get('summary', '')}",
+            f"user_focus: {record.get('user_focus', '')}",
+            f"assistant_focus: {record.get('assistant_focus', '')}",
+            f"emotion_tone: {record.get('emotion_tone', 'neutral')}",
+        ]
+    )
+
+
 def _bullets_from_context(snippets: List[str], n: int = 3, max_len: int = 220) -> List[str]:
     bullets: List[str] = []
     for text in snippets:
@@ -86,8 +148,9 @@ def _save_memory(
     user_input: str,
     reply: str,
 ) -> None:
-    summary = f"User asked: {user_input[:300]} | Assistant replied: {reply[:300]}"
-    vector = get_embedding(summary)
+    record = _build_memory_record(mode, user_input, reply)
+    memory_text = _record_to_embedding_text(record)
+    vector = get_embedding(memory_text)
 
     client.upsert(
         collection_name=MEMORY_COLLECTIONS[mode],
@@ -100,7 +163,13 @@ def _save_memory(
                     "session_id": session_id,
                     "relationship_id": relationship_id,
                     "mode": mode,
-                    "text": summary,
+                    "text": memory_text,
+                    "summary": record["summary"],
+                    "user_focus": record["user_focus"],
+                    "assistant_focus": record["assistant_focus"],
+                    "emotion_tone": record["emotion_tone"],
+                    "memory_schema": record["schema"],
+                    "created_at": datetime.now(timezone.utc).isoformat(),
                 },
             )
         ],
@@ -185,20 +254,29 @@ def run_rag(
     memory_snippets: List[str] = []
     if embedding is None:
         embedding = get_embedding(text)
-    memory_filter = Filter(
-        must=[
-            FieldCondition(key="user_id", match=MatchValue(value=user_id)),
-        ]
-    )
-    if session_id:
-        memory_filter.must.append(FieldCondition(key="session_id", match=MatchValue(value=session_id)))
+
+    base_filters = [FieldCondition(key="user_id", match=MatchValue(value=user_id))]
     if relationship_id:
-        memory_filter.must.append(
+        base_filters.append(
             FieldCondition(key="relationship_id", match=MatchValue(value=relationship_id))
         )
 
-    memory_raw = _search(MEMORY_COLLECTIONS[mode], embedding, limit=4, flt=memory_filter)
-    memory_snippets = _trim(_filter_memory(memory_raw), max_chars=400)
+    memory_raw: List[str] = []
+    if session_id:
+        session_filter = Filter(
+            must=[
+                *base_filters,
+                FieldCondition(key="session_id", match=MatchValue(value=session_id)),
+            ]
+        )
+        memory_raw.extend(_search(MEMORY_COLLECTIONS[mode], embedding, limit=3, flt=session_filter))
+
+    long_term_filter = Filter(must=base_filters)
+    memory_raw.extend(_search(MEMORY_COLLECTIONS[mode], embedding, limit=6, flt=long_term_filter))
+    memory_snippets = _trim(
+        _filter_memory(_dedupe_preserve_order(memory_raw)),
+        max_chars=650,
+    )
     history = SESSION_HISTORY.get(session_id, [])
     messages = build_messages(
     mode,
@@ -226,6 +304,10 @@ def run_rag(
     if context and any(marker in reply.lower() for marker in denial_markers):
         bullets = _bullets_from_context(context, n=3)
         reply = "Here are key points from your document:\n- " + "\n- ".join(bullets)
+
+    output_safe, output_msg = evaluate_output(reply)
+    if not output_safe:
+        reply = output_msg
 
     history.append({"role": "user", "content": text})
     history.append({"role": "assistant", "content": reply})
