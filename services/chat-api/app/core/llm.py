@@ -46,10 +46,15 @@ def _openai_client_and_model() -> Tuple[OpenAI, str]:
     return OpenAI(**kwargs), model
 
 
-def ask_llm(messages: List[Dict[str, str]], temperature: float = 0.4, user_id: Optional[str] = None) -> str:
+def ask_llm(
+    messages: List[Dict[str, str]],
+    temperature: float = 0.4,
+    user_id: Optional[str] = None,
+    max_tokens: Optional[int] = None,
+) -> str:
     client, model = _openai_client_and_model()
 
-    response = _chat_with_retry(client, model, messages, temperature)
+    response = _chat_with_retry(client, model, messages, temperature, max_tokens or LLM_MAX_TOKENS)
     usage = getattr(response, "usage", None)
     if usage:
         log_usage(
@@ -66,12 +71,18 @@ def ask_llm(messages: List[Dict[str, str]], temperature: float = 0.4, user_id: O
     wait=wait_exponential(multiplier=0.5, min=0.5, max=4),
     stop=stop_after_attempt(LLM_RETRY_LIMIT),
 )
-def _chat_with_retry(client: OpenAI, model: str, messages: List[Dict[str, str]], temperature: float):
+def _chat_with_retry(
+    client: OpenAI,
+    model: str,
+    messages: List[Dict[str, str]],
+    temperature: float,
+    max_tokens: int,
+):
     resp = client.chat.completions.create(
         model=model,
         messages=messages,
         temperature=temperature,
-        max_tokens=LLM_MAX_TOKENS,
+        max_tokens=max_tokens,
     )
     log_request(
         "llm_call",
