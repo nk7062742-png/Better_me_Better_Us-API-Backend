@@ -12,11 +12,12 @@ load_dotenv(dotenv_path=ROOT_ENV, override=False)
 QDRANT_URL = os.getenv("QDRANT_URL")
 QDRANT_API_KEY = os.getenv("QDRANT_API_KEY")
 EMBEDDING_DIMENSION = int(os.getenv("EMBEDDING_DIMENSION", "1536"))
+ALLOW_MISSING_QDRANT = os.getenv("ALLOW_MISSING_QDRANT", "false").lower() == "true"
 
-if not QDRANT_URL or not QDRANT_API_KEY:
+if (not QDRANT_URL or not QDRANT_API_KEY) and not ALLOW_MISSING_QDRANT:
     raise RuntimeError("QDRANT_URL and QDRANT_API_KEY are required; set via secrets manager.")
 
-client = QdrantClient(url=QDRANT_URL, api_key=QDRANT_API_KEY)
+client = QdrantClient(url=QDRANT_URL, api_key=QDRANT_API_KEY) if QDRANT_URL and QDRANT_API_KEY else None
 
 KB_COLLECTIONS: Dict[str, str] = {
     "relationship_private": "relationship_private_vectors",
@@ -34,12 +35,13 @@ MEMORY_COLLECTIONS: Dict[str, str] = {
 
 
 def _ensure_collection(name: str) -> None:
+    if client is None:
+        return
     collections = {item.name for item in client.get_collections().collections}
     if name in collections:
         info = client.get_collection(name)
         size = info.config.params.vectors.size
         if size != EMBEDDING_DIMENSION:
-            # Drop and recreate with correct size
             client.delete_collection(collection_name=name)
             collections.remove(name)
         else:
@@ -52,7 +54,17 @@ def _ensure_collection(name: str) -> None:
 
 def _ensure_payload_indexes(collection: str) -> None:
     """Create keyword indexes for fields we filter on; ignore if they already exist."""
-    for field in ("source", "filename", "mode", "session_id", "relationship_id", "user_id"):
+    if client is None:
+        return
+    for field in (
+        "source",
+        "filename",
+        "mode",
+        "session_id",
+        "relationship_id",
+        "user_id",
+        "memory_kind",
+    ):
         try:
             client.create_payload_index(
                 collection_name=collection,
@@ -60,11 +72,12 @@ def _ensure_payload_indexes(collection: str) -> None:
                 field_schema=PayloadSchemaType.KEYWORD,
             )
         except Exception:
-            # Likely already exists; keep going.
             continue
 
 
 def ensure_collections() -> None:
+    if client is None:
+        return
     for collection in KB_COLLECTIONS.values():
         _ensure_collection(collection)
         _ensure_payload_indexes(collection)
