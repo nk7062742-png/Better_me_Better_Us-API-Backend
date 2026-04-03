@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 from fastapi import APIRouter, File, Form, HTTPException, UploadFile, Depends
 
 from app.core.auth import get_current_user_id
