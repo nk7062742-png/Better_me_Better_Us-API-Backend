@@ -5,7 +5,6 @@ from typing import Optional
 try:
     from app.core.auth import require_admin_key
 except ImportError:
-    # Backward-compatible fallback if deployed auth module doesn't expose require_admin_key yet.
     def require_admin_key(
         x_admin_key: str | None = Header(default=None, alias="x-admin-key"),
     ) -> bool:
@@ -24,7 +23,7 @@ except ImportError:
 
 from app.core.rate_limit import enforce_rate_limit
 from app.core.qdrant_db import KB_COLLECTIONS, MEMORY_COLLECTIONS, client
-from app.core.telemetry import error_logs, metrics, moderation_logs
+from app.core.telemetry import error_logs, metrics, moderation_logs, budget_usage
 
 router = APIRouter(prefix="/admin", tags=["admin"])
 
@@ -44,6 +43,7 @@ def status(_admin=Depends(require_admin_key), _rl=Depends(enforce_rate_limit)):
         "memory_collection_sizes": memory_sizes,
         "error_logs": error_logs[-20:],
         "moderation_logs": moderation_logs[-20:],
+        "budget_usage": budget_usage(),
     }
 
 
@@ -54,5 +54,6 @@ def metrics_endpoint(_admin=Depends(require_admin_key), _rl=Depends(enforce_rate
         "metrics": metrics,
         "error_logs": error_logs[-50:],
         "moderation_logs": moderation_logs[-50:],
+        "budget_usage": budget_usage(),
     }
  
