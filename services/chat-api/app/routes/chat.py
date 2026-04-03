@@ -7,6 +7,7 @@ from app.core.auth import get_current_user_id
 from app.core.cost_controls import BudgetExceededError
 from app.core.rate_limit import enforce_rate_limit
 from app.core.modes import normalize_mode
+from app.core.telemetry import log_request
 from app.services.rag import run_rag
 
 router = APIRouter()
@@ -29,8 +30,13 @@ def chat(
     _rl=Depends(enforce_rate_limit),
 ):
     try:
-        print(
-            f"[SESSION_CHECK] user={user_id} mode={payload.mode} session_id={payload.session_id}"
+        log_request(
+            "session_check",
+            {
+                "user_id": user_id,
+                "mode": payload.mode,
+                "session_id": payload.session_id,
+            },
         )
         mode = normalize_mode(payload.mode)
 
