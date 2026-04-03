@@ -4,6 +4,7 @@ from fastapi import APIRouter, HTTPException, Depends
 from pydantic import BaseModel
 
 from app.core.auth import get_current_user_id
+from app.core.cost_controls import BudgetExceededError
 from app.core.rate_limit import enforce_rate_limit
 from app.core.modes import normalize_mode
 from app.services.rag import run_rag
@@ -28,6 +29,9 @@ def chat(
     _rl=Depends(enforce_rate_limit),
 ):
     try:
+        print(
+            f"[SESSION_CHECK] user={user_id} mode={payload.mode} session_id={payload.session_id}"
+        )
         mode = normalize_mode(payload.mode)
 
         result = run_rag(
@@ -51,3 +55,5 @@ def chat(
 
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
+    except BudgetExceededError as exc:
+        raise HTTPException(status_code=429, detail=str(exc)) from exc
