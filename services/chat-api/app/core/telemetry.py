@@ -1,4 +1,5 @@
 import json
+import logging
 from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional
 
@@ -44,7 +45,7 @@ def log_error(source: str, message: str) -> None:
 def log_request(event: str, data: Dict[str, Any]) -> None:
     """Emit a structured JSON line."""
     payload = {"event": event, "ts": datetime.now(timezone.utc).isoformat(), **data}
-    print(json.dumps(payload, default=str))
+    logger.info(json.dumps(payload, default=str))
 
 
 def log_usage(model: str, prompt_tokens: int, completion_tokens: int, user_id: Optional[str]) -> None:
@@ -79,3 +80,4 @@ def log_moderation(result: Dict[str, Any]) -> None:
 
 def budget_usage() -> Dict[str, Dict[str, float]]:
     return usage_snapshot()
+logger = logging.getLogger(__name__)
