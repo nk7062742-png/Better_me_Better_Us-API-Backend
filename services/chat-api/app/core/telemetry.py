@@ -2,6 +2,9 @@ import json
 from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional
 
+from app.core.cost_controls import record_usage, usage_snapshot
+from app.core.firestore_bridge import sync_moderation_event
+
 # Simple in-memory counters; in production ship these to real telemetry.
 metrics: Dict[str, Any] = {
     "chat_requests": 0,
@@ -54,6 +57,7 @@ def log_usage(model: str, prompt_tokens: int, completion_tokens: int, user_id: O
         + (completion_tokens / 1000.0) * pricing.get("completion", 0)
     )
     inc("total_cost_usd", cost)
+    record_usage(user_id, prompt_tokens, completion_tokens, cost)
 
     log_request(
         "token_usage",
@@ -70,3 +74,8 @@ def log_usage(model: str, prompt_tokens: int, completion_tokens: int, user_id: O
 def log_moderation(result: Dict[str, Any]) -> None:
     moderation_logs.append(result)
     log_request("moderation", result)
+    sync_moderation_event(result)
+
+
+def budget_usage() -> Dict[str, Dict[str, float]]:
+    return usage_snapshot()
