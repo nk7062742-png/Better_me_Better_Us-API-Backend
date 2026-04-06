@@ -102,6 +102,17 @@ def _session_doc_id(mode: str, user_id: str, session_id: str, relationship_id: O
     return hashlib.sha1(key.encode("utf-8")).hexdigest()
 
 
+def _usage_doc_id(user_id: str, day: str) -> str:
+    key = f"{user_id}|{day}"
+    return hashlib.sha1(key.encode("utf-8")).hexdigest()
+
+
+def _extract_fields(payload: Optional[Dict[str, Any]]) -> Dict[str, Any]:
+    if not payload:
+        return {}
+    return payload.get("fields", {})
+
+
 def sync_moderation_event(event: Dict[str, Any]) -> None:
     if not event.get("flagged"):
         return
@@ -172,3 +183,32 @@ def load_chat_turns(
             turns.append({"role": role, "content": content})
     turns.reverse()
     return turns[-limit:]
+
+
+def load_daily_usage(user_id: str, day: str) -> Optional[Dict[str, float]]:
+    doc_id = _usage_doc_id(user_id, day)
+    payload = _request_json("GET", f"usage_daily/{doc_id}")
+    fields = _extract_fields(payload)
+    if not fields:
+        return None
+
+    tokens = _from_firestore_value(fields.get("tokens", {}))
+    cost_usd = _from_firestore_value(fields.get("costUsd", {}))
+    return {
+        "tokens": float(tokens or 0.0),
+        "cost_usd": float(cost_usd or 0.0),
+    }
+
+
+def save_daily_usage(user_id: str, day: str, tokens: float, cost_usd: float) -> None:
+    doc_id = _usage_doc_id(user_id, day)
+    body = {
+        "fields": {
+            "userId": _to_firestore_value(user_id),
+            "day": _to_firestore_value(day),
+            "tokens": _to_firestore_value(float(tokens)),
+            "costUsd": _to_firestore_value(float(cost_usd)),
+            "updatedAt": _to_firestore_value(datetime.now(timezone.utc)),
+        }
+    }
+    _request_json("PATCH", f"usage_daily/{doc_id}", body=body)
