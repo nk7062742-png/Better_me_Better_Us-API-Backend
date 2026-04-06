@@ -6,6 +6,8 @@ from typing import Dict, Tuple
 
 import tiktoken
 
+from app.core.firestore_bridge import load_daily_usage, save_daily_usage
+
 
 class BudgetExceededError(Exception):
     pass
@@ -41,7 +43,11 @@ def enforce_chat_budget(user_id: str, user_text: str) -> None:
         )
 
     key = (user_id, _today_key())
-    current = _daily_usage.get(key, {"tokens": 0.0, "cost_usd": 0.0})
+    current = _daily_usage.get(key)
+    if current is None:
+        remote = load_daily_usage(user_id=user_id, day=key[1])
+        current = remote or {"tokens": 0.0, "cost_usd": 0.0}
+        _daily_usage[key] = current
     if current["tokens"] >= DAILY_TOKEN_BUDGET_PER_USER:
         raise BudgetExceededError("Daily token budget reached for this account.")
     if current["cost_usd"] >= DAILY_COST_BUDGET_USD_PER_USER:
@@ -55,6 +61,12 @@ def record_usage(user_id: str | None, prompt_tokens: int, completion_tokens: int
     current = _daily_usage.setdefault(key, {"tokens": 0.0, "cost_usd": 0.0})
     current["tokens"] += float(prompt_tokens + completion_tokens)
     current["cost_usd"] += float(cost_usd)
+    save_daily_usage(
+        user_id=user_id,
+        day=key[1],
+        tokens=current["tokens"],
+        cost_usd=current["cost_usd"],
+    )
 
 
 def usage_snapshot() -> Dict[str, Dict[str, float]]:
