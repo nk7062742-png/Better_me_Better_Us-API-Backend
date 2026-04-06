@@ -11,7 +11,6 @@ def _setup_common_mocks(monkeypatch):
     monkeypatch.setattr(rag, "append_chat_turn", lambda *_, **__: None)
     monkeypatch.setattr(rag, "load_chat_turns", lambda *_, **__: [])
     monkeypatch.setattr(rag, "enforce_chat_budget", lambda *_, **__: None)
-    rag.SESSION_HISTORY.clear()
     rag.SESSION_OWNERS.clear()
 
 
@@ -30,6 +29,7 @@ def test_mode_queries_use_only_mode_specific_collections(monkeypatch):
         user_id="u1",
         session_id="sess-1",
         query="I need clarity for this week",
+        source="coaching-guide.pdf",
     )
 
     assert KB_COLLECTIONS["coaching"] in calls
