@@ -8,6 +8,7 @@ from urllib.request import Request, urlopen
 
 import google.auth
 from google.auth.transport.requests import Request as GoogleAuthRequest
+from google.oauth2 import service_account
 
 import logging
 
@@ -16,6 +17,10 @@ logger = logging.getLogger(__name__)
 FIRESTORE_SCOPE = ["https://www.googleapis.com/auth/datastore"]
 FIRESTORE_PROJECT_ID = os.getenv("FIRESTORE_PROJECT_ID", "").strip()
 FIRESTORE_ENABLED = os.getenv("FIRESTORE_SYNC_ENABLED", "true").lower() == "true"
+GOOGLE_CREDENTIALS_JSON = (
+    os.getenv("GOOGLE_APPLICATION_CREDENTIALS_JSON", "").strip()
+    or os.getenv("FIREBASE_SERVICE_ACCOUNT_JSON", "").strip()
+)
 
 _credentials = None
 _resolved_project_id: Optional[str] = None
@@ -31,8 +36,16 @@ def _get_auth() -> tuple[Optional[str], Optional[str]]:
         return None, None
     try:
         if _credentials is None:
-            _credentials, detected_project = google.auth.default(scopes=FIRESTORE_SCOPE)
-            _resolved_project_id = FIRESTORE_PROJECT_ID or detected_project
+            if GOOGLE_CREDENTIALS_JSON:
+                info = json.loads(GOOGLE_CREDENTIALS_JSON)
+                _credentials = service_account.Credentials.from_service_account_info(
+                    info,
+                    scopes=FIRESTORE_SCOPE,
+                )
+                _resolved_project_id = FIRESTORE_PROJECT_ID or str(info.get("project_id") or "").strip()
+            else:
+                _credentials, detected_project = google.auth.default(scopes=FIRESTORE_SCOPE)
+                _resolved_project_id = FIRESTORE_PROJECT_ID or detected_project
         if not _resolved_project_id:
             return None, None
         if not _credentials.valid:
