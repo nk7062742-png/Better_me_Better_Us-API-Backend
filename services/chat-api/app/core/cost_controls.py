@@ -48,7 +48,8 @@ def enforce_chat_budget(user_id: str, user_text: str) -> None:
         remote = load_daily_usage(user_id=user_id, day=key[1])
         current = remote or {"tokens": 0.0, "cost_usd": 0.0}
         _daily_usage[key] = current
-    if current["tokens"] >= DAILY_TOKEN_BUDGET_PER_USER:
+    projected_tokens = current["tokens"] + float(estimated_input_tokens)
+    if current["tokens"] >= DAILY_TOKEN_BUDGET_PER_USER or projected_tokens > DAILY_TOKEN_BUDGET_PER_USER:
         raise BudgetExceededError("Daily token budget reached for this account.")
     if current["cost_usd"] >= DAILY_COST_BUDGET_USD_PER_USER:
         raise BudgetExceededError("Daily cost budget reached for this account.")
