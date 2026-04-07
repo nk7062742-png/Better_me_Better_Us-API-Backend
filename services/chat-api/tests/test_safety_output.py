@@ -24,3 +24,15 @@ def test_evaluate_output_blocks_when_moderation_flags_content(monkeypatch):
 
     assert safe is False
     assert "I can’t provide that" in msg
+
+
+def test_evaluate_output_allows_non_high_risk_moderation_flag(monkeypatch):
+    monkeypatch.setattr(
+        safety,
+        "_moderate_openai",
+        lambda _text: (False, "flagged", {"flagged": True, "categories": {"sexual": True}}),
+    )
+
+    safe, _msg = safety.evaluate_output("Benign productivity suggestion", user_id="u1")
+
+    assert safe is True
