@@ -75,7 +75,10 @@ def log_usage(model: str, prompt_tokens: int, completion_tokens: int, user_id: O
 def log_moderation(result: Dict[str, Any]) -> None:
     payload = dict(result)
     payload.setdefault("timestamp", datetime.now(timezone.utc).isoformat())
-    payload.setdefault("user_id", payload.get("userId") or "unknown")
+    raw_user_id = payload.get("user_id") or payload.get("userId")
+    user_id = str(raw_user_id).strip() if raw_user_id is not None else ""
+    payload["user_id"] = user_id or "unknown"
+    payload["userId"] = payload["user_id"]
     moderation_logs.append(payload)
     log_request("moderation", payload)
     sync_moderation_event(payload)
