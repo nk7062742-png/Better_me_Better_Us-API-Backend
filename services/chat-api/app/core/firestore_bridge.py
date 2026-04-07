@@ -126,18 +126,33 @@ def _extract_fields(payload: Optional[Dict[str, Any]]) -> Dict[str, Any]:
     return payload.get("fields", {})
 
 
+def _parse_event_timestamp(value: Any) -> datetime:
+    if isinstance(value, datetime):
+        return value.astimezone(timezone.utc)
+    if isinstance(value, str):
+        normalized = value.strip()
+        if normalized.endswith("Z"):
+            normalized = normalized[:-1] + "+00:00"
+        try:
+            return datetime.fromisoformat(normalized).astimezone(timezone.utc)
+        except ValueError:
+            pass
+    return datetime.now(timezone.utc)
+
+
 def sync_moderation_event(event: Dict[str, Any]) -> None:
     if not event.get("flagged"):
         return
-    now = datetime.now(timezone.utc)
+    event_ts = _parse_event_timestamp(event.get("timestamp"))
+    event_user_id = event.get("user_id") or event.get("userId") or "unknown"
     doc = {
         "fields": {
-            "userId": _to_firestore_value(event.get("user_id") or "unknown"),
+            "userId": _to_firestore_value(event_user_id),
             "response": _to_firestore_value(event.get("input_preview") or event.get("output_preview") or ""),
             "reason": _to_firestore_value(event.get("reason") or "moderation_flag"),
             "channel": _to_firestore_value(event.get("channel") or "unknown"),
             "status": _to_firestore_value("pending"),
-            "flaggedAt": _to_firestore_value(now),
+            "flaggedAt": _to_firestore_value(event_ts),
             "source": _to_firestore_value("backend_moderation"),
         }
     }
