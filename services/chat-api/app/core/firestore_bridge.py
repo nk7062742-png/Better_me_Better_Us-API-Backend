@@ -24,14 +24,16 @@ GOOGLE_CREDENTIALS_JSON = (
 
 _credentials = None
 _resolved_project_id: Optional[str] = None
+_firestore_runtime_disabled = False
+_firestore_disable_reason_logged = False
 
 
 def _firestore_configured() -> bool:
-    return FIRESTORE_ENABLED
+    return FIRESTORE_ENABLED and not _firestore_runtime_disabled
 
 
 def _get_auth() -> tuple[Optional[str], Optional[str]]:
-    global _credentials, _resolved_project_id
+    global _credentials, _resolved_project_id, _firestore_runtime_disabled, _firestore_disable_reason_logged
     if not _firestore_configured():
         return None, None
     try:
@@ -47,12 +49,27 @@ def _get_auth() -> tuple[Optional[str], Optional[str]]:
                 _credentials, detected_project = google.auth.default(scopes=FIRESTORE_SCOPE)
                 _resolved_project_id = FIRESTORE_PROJECT_ID or detected_project
         if not _resolved_project_id:
+            _firestore_runtime_disabled = True
+            if not _firestore_disable_reason_logged:
+                logger.warning(
+                    "firestore_sync_disabled: missing project id. "
+                    "Set FIRESTORE_PROJECT_ID and credentials env vars."
+                )
+                _firestore_disable_reason_logged = True
             return None, None
         if not _credentials.valid:
             _credentials.refresh(GoogleAuthRequest())
         return _credentials.token, _resolved_project_id
     except Exception as exc:
-        logger.warning("firestore_auth_failed: %s", exc)
+        _firestore_runtime_disabled = True
+        if not _firestore_disable_reason_logged:
+            logger.warning(
+                "firestore_sync_disabled_after_auth_failure: %s. "
+                "Set GOOGLE_APPLICATION_CREDENTIALS_JSON (or FIREBASE_SERVICE_ACCOUNT_JSON) "
+                "and FIRESTORE_PROJECT_ID in deployment env.",
+                exc,
+            )
+            _firestore_disable_reason_logged = True
         return None, None
 
 
