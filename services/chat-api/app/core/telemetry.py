@@ -73,9 +73,12 @@ def log_usage(model: str, prompt_tokens: int, completion_tokens: int, user_id: O
 
 
 def log_moderation(result: Dict[str, Any]) -> None:
-    moderation_logs.append(result)
-    log_request("moderation", result)
-    sync_moderation_event(result)
+    payload = dict(result)
+    payload.setdefault("timestamp", datetime.now(timezone.utc).isoformat())
+    payload.setdefault("user_id", payload.get("userId") or "unknown")
+    moderation_logs.append(payload)
+    log_request("moderation", payload)
+    sync_moderation_event(payload)
 
 
 def budget_usage() -> Dict[str, Dict[str, float]]:
