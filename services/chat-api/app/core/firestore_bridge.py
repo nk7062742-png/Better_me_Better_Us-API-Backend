@@ -189,6 +189,7 @@ def sync_moderation_event(event: Dict[str, Any]) -> None:
     doc = {
         "fields": {
             "userId": _to_firestore_value(event_user_id),
+            "userIdSource": _to_firestore_value(event.get("user_id_source") or "unknown"),
             "response": _to_firestore_value(event.get("input_preview") or event.get("output_preview") or ""),
             "reason": _to_firestore_value(event.get("reason") or "moderation_flag"),
             "channel": _to_firestore_value(event.get("channel") or "unknown"),
