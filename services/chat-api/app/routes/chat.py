@@ -8,6 +8,7 @@ from app.core.cost_controls import BudgetExceededError
 from app.core.rate_limit import enforce_rate_limit
 from app.core.modes import normalize_mode
 from app.core.telemetry import log_request
+from app.core.request_context import set_current_user_id, reset_current_user_id
 from app.services.rag import run_rag
 
 router = APIRouter()
@@ -29,6 +30,7 @@ def chat(
     user_id: str = Depends(get_current_user_id),
     _rl=Depends(enforce_rate_limit),
 ):
+    user_ctx_token = set_current_user_id(user_id)
     try:
         log_request(
             "session_check",
@@ -63,3 +65,5 @@ def chat(
         raise HTTPException(status_code=400, detail=str(exc)) from exc
     except BudgetExceededError as exc:
         raise HTTPException(status_code=429, detail=str(exc)) from exc
+    finally:
+        reset_current_user_id(user_ctx_token)
