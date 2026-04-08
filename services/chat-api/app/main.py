@@ -4,6 +4,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 
 from app.core.telemetry import log_error, log_request
+from app.core.request_context import reset_current_user_id, set_current_user_id
 from fastapi.openapi.utils import get_openapi
 from app.routes.admin import router as admin_router
 from app.routes.chat import router as chat_router
@@ -40,19 +41,23 @@ async def log_requests(request: Request, call_next):
     from time import time
  
     start = time()
-    response = await call_next(request)
-    duration_ms = (time() - start) * 1000
-    log_request(
-        "http_request",
-        {
-            "method": request.method,
-            "path": request.url.path,
-            "status": response.status_code,
-            "latency_ms": round(duration_ms, 1),
-            "client": request.client.host if request.client else None,
-        },
-    )
-    return response
+    token = set_current_user_id(None)
+    try:
+        response = await call_next(request)
+        duration_ms = (time() - start) * 1000
+        log_request(
+            "http_request",
+            {
+                "method": request.method,
+                "path": request.url.path,
+                "status": response.status_code,
+                "latency_ms": round(duration_ms, 1),
+                "client": request.client.host if request.client else None,
+            },
+        )
+        return response
+    finally:
+        reset_current_user_id(token)
  
  
 @app.exception_handler(Exception)
