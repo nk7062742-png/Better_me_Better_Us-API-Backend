@@ -9,6 +9,7 @@ from urllib.request import Request, urlopen
 import google.auth
 from google.auth.transport.requests import Request as GoogleAuthRequest
 from google.oauth2 import service_account
+from app.core.request_context import get_current_user_id as get_context_user_id
 
 import logging
 
@@ -176,6 +177,7 @@ def sync_moderation_event(event: Dict[str, Any]) -> None:
         or _normalize_user_id(event.get("uid"))
         or _normalize_user_id(event.get("sub"))
         or _normalize_user_id(event.get("id"))
+        or _normalize_user_id(get_context_user_id())
     )
     if not event_user_id:
         logger.warning("skip_moderation_event_missing_user_id")
