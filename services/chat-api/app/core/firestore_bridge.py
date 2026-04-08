@@ -28,6 +28,15 @@ _firestore_runtime_disabled = False
 _firestore_disable_reason_logged = False
 
 
+def _normalize_user_id(value: Any) -> str:
+    if value is None:
+        return ""
+    normalized = str(value).strip()
+    if normalized.lower() in {"", "unknown", "null", "none"}:
+        return ""
+    return normalized
+
+
 def _firestore_configured() -> bool:
     return FIRESTORE_ENABLED and not _firestore_runtime_disabled
 
@@ -161,7 +170,11 @@ def sync_moderation_event(event: Dict[str, Any]) -> None:
     if not event.get("flagged"):
         return
     event_ts = _parse_event_timestamp(event.get("timestamp"))
-    event_user_id = event.get("user_id") or event.get("userId") or "unknown"
+    event_user_id = (
+        _normalize_user_id(event.get("user_id"))
+        or _normalize_user_id(event.get("userId"))
+        or "unknown"
+    )
     doc = {
         "fields": {
             "userId": _to_firestore_value(event_user_id),
