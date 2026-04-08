@@ -31,6 +31,12 @@ _credentials = None
 _resolved_project_id: Optional[str] = None
 _firestore_runtime_disabled = False
 _firestore_disable_reason_logged = False
+_FORCE_PERSIST_REASONS = {
+    "moderation_unavailable",
+    "keyword_self_harm_guard",
+    "keyword_violence_guard",
+    "keyword_output_guard",
+}
 
 
 def _normalize_user_id(value: Any) -> str:
@@ -172,7 +178,10 @@ def _parse_event_timestamp(value: Any) -> datetime:
 
 
 def sync_moderation_event(event: Dict[str, Any]) -> None:
-    if not event.get("flagged"):
+    reason = str(event.get("reason") or "").strip()
+    should_persist = bool(event.get("flagged")) or reason in _FORCE_PERSIST_REASONS
+    if not should_persist:
+        logger.info("skip_moderation_event_not_flagged reason=%s", reason or "none")
         return
     event_ts = _parse_event_timestamp(event.get("timestamp"))
     event_user_id = (
