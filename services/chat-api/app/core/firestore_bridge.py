@@ -173,6 +173,9 @@ def sync_moderation_event(event: Dict[str, Any]) -> None:
     event_user_id = (
         _normalize_user_id(event.get("user_id"))
         or _normalize_user_id(event.get("userId"))
+        or _normalize_user_id(event.get("uid"))
+        or _normalize_user_id(event.get("sub"))
+        or _normalize_user_id(event.get("id"))
     )
     if not event_user_id:
         logger.warning("skip_moderation_event_missing_user_id")
