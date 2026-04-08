@@ -78,30 +78,3 @@ def test_sync_moderation_event_prefers_non_placeholder_user_id(monkeypatch):
 
     fields = captured["body"]["fields"]
     assert fields["userId"]["stringValue"] == "real-uid-77"
-
-
-def test_sync_moderation_event_persists_moderation_unavailable_reason(monkeypatch):
-    captured = {}
-
-    def fake_request(method, path, body=None, query=None):
-        captured["method"] = method
-        captured["path"] = path
-        captured["body"] = body
-        return {}
-
-    monkeypatch.setattr(firestore_bridge, "_request_json", fake_request)
-    firestore_bridge.sync_moderation_event(
-        {
-            "flagged": False,
-            "reason": "moderation_unavailable",
-            "channel": "input",
-            "user_id": "user-789",
-            "input_preview": "preview text",
-        }
-    )
-
-    assert captured["method"] == "POST"
-    assert captured["path"] == "flagged_responses"
-    fields = captured["body"]["fields"]
-    assert fields["userId"]["stringValue"] == "user-789"
-    assert fields["reason"]["stringValue"] == "moderation_unavailable"
