@@ -9,11 +9,6 @@ from urllib.request import Request, urlopen
 import google.auth
 from google.auth.transport.requests import Request as GoogleAuthRequest
 from google.oauth2 import service_account
-try:
-    from app.core.request_context import get_current_user_id as get_context_user_id
-except ModuleNotFoundError:  # pragma: no cover
-    def get_context_user_id() -> Optional[str]:
-        return None
 
 import logging
 
@@ -31,12 +26,6 @@ _credentials = None
 _resolved_project_id: Optional[str] = None
 _firestore_runtime_disabled = False
 _firestore_disable_reason_logged = False
-_FORCE_PERSIST_REASONS = {
-    "moderation_unavailable",
-    "keyword_self_harm_guard",
-    "keyword_violence_guard",
-    "keyword_output_guard",
-}
 
 
 def _normalize_user_id(value: Any) -> str:
@@ -178,18 +167,12 @@ def _parse_event_timestamp(value: Any) -> datetime:
 
 
 def sync_moderation_event(event: Dict[str, Any]) -> None:
-    reason = str(event.get("reason") or "").strip()
-    should_persist = bool(event.get("flagged")) or reason in _FORCE_PERSIST_REASONS
-    if not should_persist:
-        logger.info("skip_moderation_event_not_flagged reason=%s", reason or "none")
+    if not event.get("flagged"):
         return
     event_ts = _parse_event_timestamp(event.get("timestamp"))
     event_user_id = (
         _normalize_user_id(event.get("user_id"))
         or _normalize_user_id(event.get("userId"))
-        or _normalize_user_id(event.get("auth_user_id"))
-        or _normalize_user_id(event.get("authUserId"))
-        or _normalize_user_id(get_context_user_id())
     )
     if not event_user_id:
         logger.warning("skip_moderation_event_missing_user_id")
