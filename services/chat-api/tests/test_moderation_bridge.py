@@ -44,6 +44,19 @@ def test_sync_moderation_event_skips_unflagged(monkeypatch):
     assert called["value"] is False
 
 
+def test_sync_moderation_event_skips_missing_user_id(monkeypatch):
+    called = {"value": False}
+
+    def fake_request(method, path, body=None, query=None):
+        called["value"] = True
+        return {}
+
+    monkeypatch.setattr(firestore_bridge, "_request_json", fake_request)
+    firestore_bridge.sync_moderation_event({"flagged": True, "user_id": "unknown"})
+
+    assert called["value"] is False
+
+
 def test_sync_moderation_event_prefers_non_placeholder_user_id(monkeypatch):
     captured = {}
 
