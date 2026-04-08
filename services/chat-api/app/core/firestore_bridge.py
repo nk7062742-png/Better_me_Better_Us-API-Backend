@@ -184,8 +184,8 @@ def sync_moderation_event(event: Dict[str, Any]) -> None:
         or _normalize_user_id(get_context_user_id())
     )
     if not event_user_id:
-        logger.warning("skip_moderation_event_missing_user_id")
-        return
+        event_user_id = "unknown"
+        logger.warning("moderation_event_missing_user_id_using_unknown")
     doc = {
         "fields": {
             "userId": _to_firestore_value(event_user_id),
