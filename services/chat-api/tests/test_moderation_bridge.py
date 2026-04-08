@@ -1,4 +1,5 @@
 from app.core import firestore_bridge
+from app.core.request_context import reset_current_user_id, set_current_user_id
 
 
 def test_sync_moderation_event_uses_event_timestamp_and_user(monkeypatch):
@@ -100,3 +101,28 @@ def test_sync_moderation_event_accepts_uid_fallback(monkeypatch):
 
     fields = captured["body"]["fields"]
     assert fields["userId"]["stringValue"] == "firebase-uid-88"
+
+
+def test_sync_moderation_event_uses_request_context_user_id(monkeypatch):
+    captured = {}
+
+    def fake_request(method, path, body=None, query=None):
+        captured["body"] = body
+        return {}
+
+    monkeypatch.setattr(firestore_bridge, "_request_json", fake_request)
+    token = set_current_user_id("ctx-user-991")
+    try:
+        firestore_bridge.sync_moderation_event(
+            {
+                "flagged": True,
+                "channel": "input",
+                "reason": "moderation_flag",
+                "input_preview": "preview text",
+            }
+        )
+    finally:
+        reset_current_user_id(token)
+
+    fields = captured["body"]["fields"]
+    assert fields["userId"]["stringValue"] == "ctx-user-991"
