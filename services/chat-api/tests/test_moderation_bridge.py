@@ -42,3 +42,26 @@ def test_sync_moderation_event_skips_unflagged(monkeypatch):
     firestore_bridge.sync_moderation_event({"flagged": False, "user_id": "u1"})
 
     assert called["value"] is False
+
+
+def test_sync_moderation_event_prefers_non_placeholder_user_id(monkeypatch):
+    captured = {}
+
+    def fake_request(method, path, body=None, query=None):
+        captured["body"] = body
+        return {}
+
+    monkeypatch.setattr(firestore_bridge, "_request_json", fake_request)
+    firestore_bridge.sync_moderation_event(
+        {
+            "flagged": True,
+            "channel": "input",
+            "reason": "moderation_flag",
+            "user_id": "unknown",
+            "userId": "real-uid-77",
+            "input_preview": "preview text",
+        }
+    )
+
+    fields = captured["body"]["fields"]
+    assert fields["userId"]["stringValue"] == "real-uid-77"
