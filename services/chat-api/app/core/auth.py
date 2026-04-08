@@ -9,9 +9,29 @@ from google.auth import exceptions as google_auth_exceptions
 from google.auth.transport import requests as google_requests
 from google.oauth2 import id_token as google_id_token
 from jose import JWTError, jwt
+from app.core.request_context import set_current_user_id
 
 
 _bearer = HTTPBearer(auto_error=False)
+
+
+def _normalize_identity_claim(value: Any) -> str:
+    if value is None:
+        return ""
+    normalized = str(value).strip()
+    if normalized.lower() in {"", "unknown", "null", "none"}:
+        return ""
+    return normalized
+
+
+def _resolve_user_id_from_claims(claims: Dict[str, Any]) -> str:
+    # Prefer explicit uid-style claims first; some providers keep `sub` as placeholder.
+    candidate_keys = ("uid", "user_id", "userId", "sub", "id")
+    for key in candidate_keys:
+        resolved = _normalize_identity_claim(claims.get(key))
+        if resolved:
+            return resolved
+    return ""
 
 
 def _load_public_key() -> str | None:
@@ -110,12 +130,14 @@ def get_current_user_id(
         )
 
     claims = _decode_token(credentials.credentials)
-    user_id = claims.get("sub") or claims.get("uid") or claims.get("user_id")
-    if not isinstance(user_id, str) or not user_id.strip():
+    user_id = _resolve_user_id_from_claims(claims)
+    if not user_id:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Token missing user identity",
         )
+    # Make user identity available to downstream telemetry/safety layers in this request.
+    set_current_user_id(user_id)
     return user_id
 
 
