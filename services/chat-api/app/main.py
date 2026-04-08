@@ -4,7 +4,14 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 
 from app.core.telemetry import log_error, log_request
-from app.core.request_context import reset_current_user_id, set_current_user_id
+try:
+    from app.core.request_context import reset_current_user_id, set_current_user_id
+except ModuleNotFoundError:  # Backward-compatible for deployments missing request_context module.
+    def set_current_user_id(_user_id):
+        return None
+
+    def reset_current_user_id(_token):
+        return None
 from fastapi.openapi.utils import get_openapi
 from app.routes.admin import router as admin_router
 from app.routes.chat import router as chat_router
