@@ -9,7 +9,11 @@ from urllib.request import Request, urlopen
 import google.auth
 from google.auth.transport.requests import Request as GoogleAuthRequest
 from google.oauth2 import service_account
-from app.core.request_context import get_current_user_id as get_context_user_id
+try:
+    from app.core.request_context import get_current_user_id as get_context_user_id
+except ModuleNotFoundError:  # Backward-compatible for deployments missing request_context module.
+    def get_context_user_id() -> Optional[str]:
+        return None
 
 import logging
 
