@@ -8,7 +8,16 @@ from app.core.cost_controls import BudgetExceededError
 from app.core.rate_limit import enforce_rate_limit
 from app.core.modes import normalize_mode
 from app.core.telemetry import log_request
-from app.core.request_context import set_current_user_id, reset_current_user_id
+try:
+    from app.core.request_context import set_current_user_id, reset_current_user_id
+except ModuleNotFoundError:  # Backward-compatible for deployments missing request_context module.
+    from typing import Any
+
+    def set_current_user_id(_user_id: str) -> Any:
+        return None
+
+    def reset_current_user_id(_token: Any) -> None:
+        return None
 from app.services.rag import run_rag
 
 router = APIRouter()
