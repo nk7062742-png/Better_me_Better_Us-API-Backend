@@ -52,6 +52,7 @@ def chat(
         )
 
         return {
+            "user_id": user_id,
             "session_id": payload.session_id,
             "relationship_id": payload.relationship_id,
             "mode": mode,
