@@ -9,11 +9,6 @@ from urllib.request import Request, urlopen
 import google.auth
 from google.auth.transport.requests import Request as GoogleAuthRequest
 from google.oauth2 import service_account
-try:
-    from app.core.request_context import get_current_user_id as get_context_user_id
-except ModuleNotFoundError:  # Backward-compatible for deployments missing request_context module.
-    def get_context_user_id() -> Optional[str]:
-        return None
 
 import logging
 
@@ -31,15 +26,6 @@ _credentials = None
 _resolved_project_id: Optional[str] = None
 _firestore_runtime_disabled = False
 _firestore_disable_reason_logged = False
-
-
-def _normalize_user_id(value: Any) -> str:
-    if value is None:
-        return ""
-    normalized = str(value).strip()
-    if normalized.lower() in {"", "unknown", "null", "none"}:
-        return ""
-    return normalized
 
 
 def _firestore_configured() -> bool:
@@ -175,21 +161,10 @@ def sync_moderation_event(event: Dict[str, Any]) -> None:
     if not event.get("flagged"):
         return
     event_ts = _parse_event_timestamp(event.get("timestamp"))
-    event_user_id = (
-        _normalize_user_id(event.get("user_id"))
-        or _normalize_user_id(event.get("userId"))
-        or _normalize_user_id(event.get("uid"))
-        or _normalize_user_id(event.get("sub"))
-        or _normalize_user_id(event.get("id"))
-        or _normalize_user_id(get_context_user_id())
-    )
-    if not event_user_id:
-        event_user_id = "unknown"
-        logger.warning("moderation_event_missing_user_id_using_unknown")
+    event_user_id = event.get("user_id") or event.get("userId") or "unknown"
     doc = {
         "fields": {
             "userId": _to_firestore_value(event_user_id),
-            "userIdSource": _to_firestore_value(event.get("user_id_source") or "unknown"),
             "response": _to_firestore_value(event.get("input_preview") or event.get("output_preview") or ""),
             "reason": _to_firestore_value(event.get("reason") or "moderation_flag"),
             "channel": _to_firestore_value(event.get("channel") or "unknown"),
