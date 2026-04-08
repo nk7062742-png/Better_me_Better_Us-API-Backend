@@ -9,7 +9,11 @@ from google.auth import exceptions as google_auth_exceptions
 from google.auth.transport import requests as google_requests
 from google.oauth2 import id_token as google_id_token
 from jose import JWTError, jwt
-from app.core.request_context import set_current_user_id
+try:
+    from app.core.request_context import set_current_user_id
+except ModuleNotFoundError:  # Backward-compatible for deployments missing request_context module.
+    def set_current_user_id(_user_id):
+        return None
 
 
 _bearer = HTTPBearer(auto_error=False)
