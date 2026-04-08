@@ -78,3 +78,25 @@ def test_sync_moderation_event_prefers_non_placeholder_user_id(monkeypatch):
 
     fields = captured["body"]["fields"]
     assert fields["userId"]["stringValue"] == "real-uid-77"
+
+
+def test_sync_moderation_event_accepts_uid_fallback(monkeypatch):
+    captured = {}
+
+    def fake_request(method, path, body=None, query=None):
+        captured["body"] = body
+        return {}
+
+    monkeypatch.setattr(firestore_bridge, "_request_json", fake_request)
+    firestore_bridge.sync_moderation_event(
+        {
+            "flagged": True,
+            "channel": "input",
+            "reason": "moderation_flag",
+            "uid": "firebase-uid-88",
+            "input_preview": "preview text",
+        }
+    )
+
+    fields = captured["body"]["fields"]
+    assert fields["userId"]["stringValue"] == "firebase-uid-88"
