@@ -9,18 +9,17 @@ from urllib.request import Request, urlopen
 import google.auth
 from google.auth.transport.requests import Request as GoogleAuthRequest
 from google.oauth2 import service_account
-try:
-    from app.core.request_context import get_current_user_id as get_context_user_id
-except ModuleNotFoundError:  # Backward-compatible for deployments missing request_context module.
-    def get_context_user_id() -> Optional[str]:
-        return None
 
 import logging
 
 logger = logging.getLogger(__name__)
 
 FIRESTORE_SCOPE = ["https://www.googleapis.com/auth/datastore"]
-FIRESTORE_PROJECT_ID = os.getenv("FIRESTORE_PROJECT_ID", "").strip()
+FIRESTORE_PROJECT_ID = (
+    os.getenv("FIRESTORE_PROJECT_ID", "").strip()
+    or os.getenv("FIREBASE_PROJECT_ID", "").strip()
+    or os.getenv("GOOGLE_CLOUD_PROJECT", "").strip()
+)
 FIRESTORE_ENABLED = os.getenv("FIRESTORE_SYNC_ENABLED", "true").lower() == "true"
 GOOGLE_CREDENTIALS_JSON = (
     os.getenv("GOOGLE_APPLICATION_CREDENTIALS_JSON", "").strip()
@@ -31,15 +30,7 @@ _credentials = None
 _resolved_project_id: Optional[str] = None
 _firestore_runtime_disabled = False
 _firestore_disable_reason_logged = False
-
-
-def _normalize_user_id(value: Any) -> str:
-    if value is None:
-        return ""
-    normalized = str(value).strip()
-    if normalized.lower() in {"", "unknown", "null", "none"}:
-        return ""
-    return normalized
+_firestore_disable_reason = ""
 
 
 def _firestore_configured() -> bool:
@@ -47,7 +38,7 @@ def _firestore_configured() -> bool:
 
 
 def _get_auth() -> tuple[Optional[str], Optional[str]]:
-    global _credentials, _resolved_project_id, _firestore_runtime_disabled, _firestore_disable_reason_logged
+    global _credentials, _resolved_project_id, _firestore_runtime_disabled, _firestore_disable_reason_logged, _firestore_disable_reason
     if not _firestore_configured():
         return None, None
     try:
@@ -64,6 +55,7 @@ def _get_auth() -> tuple[Optional[str], Optional[str]]:
                 _resolved_project_id = FIRESTORE_PROJECT_ID or detected_project
         if not _resolved_project_id:
             _firestore_runtime_disabled = True
+            _firestore_disable_reason = "missing_project_id"
             if not _firestore_disable_reason_logged:
                 logger.warning(
                     "firestore_sync_disabled: missing project id. "
@@ -76,6 +68,7 @@ def _get_auth() -> tuple[Optional[str], Optional[str]]:
         return _credentials.token, _resolved_project_id
     except Exception as exc:
         _firestore_runtime_disabled = True
+        _firestore_disable_reason = f"auth_failure:{type(exc).__name__}"
         if not _firestore_disable_reason_logged:
             logger.warning(
                 "firestore_sync_disabled_after_auth_failure: %s. "
@@ -175,21 +168,10 @@ def sync_moderation_event(event: Dict[str, Any]) -> None:
     if not event.get("flagged"):
         return
     event_ts = _parse_event_timestamp(event.get("timestamp"))
-    event_user_id = (
-        _normalize_user_id(event.get("user_id"))
-        or _normalize_user_id(event.get("userId"))
-        or _normalize_user_id(event.get("uid"))
-        or _normalize_user_id(event.get("sub"))
-        or _normalize_user_id(event.get("id"))
-        or _normalize_user_id(get_context_user_id())
-    )
-    if not event_user_id:
-        logger.warning("moderation_event_missing_user_id_skipping_firestore_write")
-        return
+    event_user_id = event.get("user_id") or event.get("userId") or "unknown"
     doc = {
         "fields": {
             "userId": _to_firestore_value(event_user_id),
-            "userIdSource": _to_firestore_value(event.get("user_id_source") or "unknown"),
             "response": _to_firestore_value(event.get("input_preview") or event.get("output_preview") or ""),
             "reason": _to_firestore_value(event.get("reason") or "moderation_flag"),
             "channel": _to_firestore_value(event.get("channel") or "unknown"),
@@ -198,7 +180,15 @@ def sync_moderation_event(event: Dict[str, Any]) -> None:
             "source": _to_firestore_value("backend_moderation"),
         }
     }
-    _request_json("POST", "flagged_responses", body=doc)
+    result = _request_json("POST", "flagged_responses", body=doc)
+    if result is None:
+        logger.warning(
+            "firestore_moderation_write_failed user_id=%s project_id=%s enabled=%s reason=%s",
+            event_user_id,
+            _resolved_project_id or FIRESTORE_PROJECT_ID or "unknown",
+            FIRESTORE_ENABLED,
+            _firestore_disable_reason or "request_failed_or_unauthorized",
+        )
 
 
 def append_chat_turn(
@@ -282,3 +272,14 @@ def save_daily_usage(user_id: str, day: str, tokens: float, cost_usd: float) -> 
         }
     }
     _request_json("PATCH", f"usage_daily/{doc_id}", body=body)
+
+
+def firestore_runtime_status() -> Dict[str, Any]:
+    return {
+        "enabled": FIRESTORE_ENABLED,
+        "configured_project_id": FIRESTORE_PROJECT_ID or "",
+        "resolved_project_id": _resolved_project_id or "",
+        "runtime_disabled": _firestore_runtime_disabled,
+        "disable_reason": _firestore_disable_reason or "",
+        "credentials_from_env_json": bool(GOOGLE_CREDENTIALS_JSON),
+    }
