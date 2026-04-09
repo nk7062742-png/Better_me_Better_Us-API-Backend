@@ -4,14 +4,6 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 
 from app.core.telemetry import log_error, log_request
-try:
-    from app.core.request_context import reset_current_user_id, set_current_user_id
-except ModuleNotFoundError:  # Backward-compatible for deployments missing request_context module.
-    def set_current_user_id(_user_id):
-        return None
-
-    def reset_current_user_id(_token):
-        return None
 from fastapi.openapi.utils import get_openapi
 from app.routes.admin import router as admin_router
 from app.routes.chat import router as chat_router
@@ -48,23 +40,19 @@ async def log_requests(request: Request, call_next):
     from time import time
  
     start = time()
-    token = set_current_user_id(None)
-    try:
-        response = await call_next(request)
-        duration_ms = (time() - start) * 1000
-        log_request(
-            "http_request",
-            {
-                "method": request.method,
-                "path": request.url.path,
-                "status": response.status_code,
-                "latency_ms": round(duration_ms, 1),
-                "client": request.client.host if request.client else None,
-            },
-        )
-        return response
-    finally:
-        reset_current_user_id(token)
+    response = await call_next(request)
+    duration_ms = (time() - start) * 1000
+    log_request(
+        "http_request",
+        {
+            "method": request.method,
+            "path": request.url.path,
+            "status": response.status_code,
+            "latency_ms": round(duration_ms, 1),
+            "client": request.client.host if request.client else None,
+        },
+    )
+    return response
  
  
 @app.exception_handler(Exception)
@@ -97,14 +85,15 @@ def custom_openapi():
                 "type": "apiKey",
                 "in": "header",
                 "name": "x-admin-key",
-            }
+            },
+            "BearerAuth": {"type": "http", "scheme": "bearer"},
         }
     )
     for path, methods in schema.get("paths", {}).items():
         if not path.startswith("/admin"):
             continue
         for method in methods.values():
-            method.setdefault("security", [{"AdminKey": []}])
+            method["security"] = [{"BearerAuth": []}, {"AdminKey": []}]
     app.openapi_schema = schema
     return app.openapi_schema
  
