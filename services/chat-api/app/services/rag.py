@@ -7,6 +7,8 @@ from qdrant_client.models import PointStruct, Filter, FieldCondition, MatchValue
 
 from app.core.qdrant_db import KB_COLLECTIONS, MEMORY_COLLECTIONS, client
 from app.core.embeddings import get_embedding
+from app.core.cost_controls import enforce_chat_budget
+from app.core.firestore_bridge import append_chat_turn, load_chat_turns
 from app.core.llm import ask_llm
 from app.core.prompts import build_messages
 from app.core.safety import evaluate_input, evaluate_output
@@ -212,8 +214,9 @@ def run_rag(
     if existing_owner and existing_owner != user_id:
         raise ValueError("Invalid session_id for authenticated user")
     SESSION_OWNERS[session_id] = user_id
+    enforce_chat_budget(user_id=user_id, user_text=text)
 
-    safe, msg = evaluate_input(text)
+    safe, msg = evaluate_input(text, user_id=user_id)
     if not safe:
         return {"reply": msg, "context": [], "memory": []}
 
@@ -262,6 +265,8 @@ def run_rag(
         )
 
     memory_raw: List[str] = []
+    long_term_filter = Filter(must=base_filters)
+    memory_raw.extend(_search(MEMORY_COLLECTIONS[mode], embedding, limit=6, flt=long_term_filter))
     if session_id:
         session_filter = Filter(
             must=[
@@ -270,14 +275,27 @@ def run_rag(
             ]
         )
         memory_raw.extend(_search(MEMORY_COLLECTIONS[mode], embedding, limit=3, flt=session_filter))
-
-    long_term_filter = Filter(must=base_filters)
-    memory_raw.extend(_search(MEMORY_COLLECTIONS[mode], embedding, limit=6, flt=long_term_filter))
     memory_snippets = _trim(
         _filter_memory(_dedupe_preserve_order(memory_raw)),
         max_chars=650,
     )
-    history = SESSION_HISTORY.get(session_id, [])
+    history: List[Dict[str, str]] = []
+    try:
+        firestore_history = load_chat_turns(
+            mode=mode,
+            user_id=user_id,
+            session_id=session_id,
+            relationship_id=relationship_id,
+            limit=12,
+        )
+    except Exception as exc:
+        log_error("firestore_history_load", f"session={session_id} failed: {exc}")
+        firestore_history = []
+
+    if firestore_history:
+        history = firestore_history
+    else:
+        history = SESSION_HISTORY.get(session_id, [])
     messages = build_messages(
     mode,
     text,
@@ -305,13 +323,32 @@ def run_rag(
         bullets = _bullets_from_context(context, n=3)
         reply = "Here are key points from your document:\n- " + "\n- ".join(bullets)
 
-    output_safe, output_msg = evaluate_output(reply)
+    output_safe, output_msg = evaluate_output(reply, user_id=user_id)
     if not output_safe:
         reply = output_msg
 
     history.append({"role": "user", "content": text})
     history.append({"role": "assistant", "content": reply})
     SESSION_HISTORY[session_id] = history[-12:]
+    try:
+        append_chat_turn(
+            mode=mode,
+            user_id=user_id,
+            session_id=session_id,
+            relationship_id=relationship_id,
+            role="user",
+            content=text,
+        )
+        append_chat_turn(
+            mode=mode,
+            user_id=user_id,
+            session_id=session_id,
+            relationship_id=relationship_id,
+            role="assistant",
+            content=reply,
+        )
+    except Exception as exc:
+        log_error("firestore_history_append", f"session={session_id} failed: {exc}")
 
     _save_memory(mode, user_id, session_id, relationship_id, text, reply)
     inc("chat_requests", 1)
