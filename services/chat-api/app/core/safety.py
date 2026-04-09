@@ -1,6 +1,6 @@
 import os
 from pathlib import Path
-from typing import Any, Mapping, Tuple
+from typing import Any, Mapping, Optional, Tuple
 
 from dotenv import load_dotenv
 from openai import OpenAI
@@ -97,10 +97,17 @@ def _moderate_openai(text: str) -> Tuple[bool, str, dict]:
     return False, _unsafe_message(categories), raw
 
 
-def evaluate_input(user_text: str) -> Tuple[bool, str]:
+def evaluate_input(user_text: str, user_id: Optional[str] = None) -> Tuple[bool, str]:
     safe, msg, raw = _moderate_openai(user_text)
     if raw:
-        log_moderation({"channel": "input", "input_preview": user_text[:120], **raw})
+        log_moderation(
+            {
+                "channel": "input",
+                "input_preview": user_text[:120],
+                "user_id": user_id,
+                **raw,
+            }
+        )
     if not safe:
         return safe, msg
 
@@ -121,15 +128,40 @@ def evaluate_input(user_text: str) -> Tuple[bool, str]:
     return True, ""
 
 
-def evaluate_output(output_text: str) -> Tuple[bool, str]:
+def evaluate_output(output_text: str, user_id: Optional[str] = None) -> Tuple[bool, str]:
     safe, _msg, raw = _moderate_openai(output_text)
     if raw:
-        log_moderation({"channel": "output", "output_preview": output_text[:120], **raw})
-    if not safe:
-        return (
-            False,
-            "I can’t provide that. I can still help with safe, supportive next steps.",
+        log_moderation(
+            {
+                "channel": "output",
+                "output_preview": output_text[:120],
+                "user_id": user_id,
+                **raw,
+            }
         )
+    if not safe:
+        # If moderation is temporarily unavailable, allow safe fallback output checks below.
+        if raw.get("error"):
+            return True, ""
+
+        categories = raw.get("categories")
+        high_risk_keys = (
+            "self-harm",
+            "self-harm/intent",
+            "self-harm/instructions",
+            "violence",
+            "violence/graphic",
+            "harassment/threatening",
+        )
+        is_high_risk = categories is None or any(
+            _category_on(categories, key) for key in high_risk_keys
+        )
+        if is_high_risk:
+            return (
+                False,
+                "I can’t provide that. I can still help with safe, supportive next steps.",
+            )
+        return True, ""
 
     text = output_text.lower()
     if any(term in text for term in SELF_HARM_TERMS) or any(term in text for term in VIOLENCE_TERMS):
