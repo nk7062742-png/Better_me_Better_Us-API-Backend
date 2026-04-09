@@ -1,9 +1,11 @@
 import os
+import json
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 
 from app.core.telemetry import log_error, log_request
+from app.core.firestore_bridge import firestore_runtime_status
 from fastapi.openapi.utils import get_openapi
 from app.routes.admin import router as admin_router
 from app.routes.chat import router as chat_router
@@ -39,6 +41,9 @@ async def startup_marker() -> None:
     marker = os.getenv("APP_STARTUP_MARKER", "m4-userid-trace-v1")
     release = os.getenv("RELEASE_VERSION", os.getenv("RENDER_GIT_COMMIT", "unknown"))
     log_request("startup_marker", {"marker": marker, "release": release})
+    # Print ensures visibility even if app logger level is above INFO.
+    print(json.dumps({"event": "startup_marker", "marker": marker, "release": release}))
+    print(json.dumps({"event": "firestore_runtime_status", **firestore_runtime_status()}))
  
  
 @app.middleware("http")
