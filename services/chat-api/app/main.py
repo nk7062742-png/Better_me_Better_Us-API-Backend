@@ -32,6 +32,13 @@ app.add_middleware(
 app.include_router(chat_router)
 app.include_router(ingestion_router)
 app.include_router(admin_router)
+
+
+@app.on_event("startup")
+async def startup_marker() -> None:
+    marker = os.getenv("APP_STARTUP_MARKER", "m4-userid-trace-v1")
+    release = os.getenv("RELEASE_VERSION", os.getenv("RENDER_GIT_COMMIT", "unknown"))
+    log_request("startup_marker", {"marker": marker, "release": release})
  
  
 @app.middleware("http")
